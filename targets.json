@@ -1,0 +1,9 @@
+{
+  "url": "https://baliksefasi.com/rezervasyon",
+  "tour": "Ekipmansız Tur",
+  "time_start": "19:00",
+  "time_end": "01:00",
+  "dates": ["2026-11-06", "2026-11-07"],
+  "boats": ["Balık Sefası", "Deniz Anası", "Aslan", "E. Terzioğlu", "Armada Grande"],
+  "end_monitoring_at": "2026-11-07T18:55:00+03:00"
+}

@@ -1,0 +1,4 @@
+diagnostics/
+__pycache__/
+.env
+*.pyc
