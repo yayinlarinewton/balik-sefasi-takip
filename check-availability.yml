@@ -1,0 +1,42 @@
+name: Balik Sefasi - Iptal Takibi
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Every 5 min, offset from the start of the hour to reduce GitHub queue contention.
+    - cron: '2-57/5 * * * *'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: balik-sefasi-monitor
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: python -m playwright install chromium --with-deps
+      - name: Check selected tours and notify via Telegram
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: python monitor.py
+      - name: Upload diagnostics (screenshots + readable elements)
+        if: ${{ always() && github.event_name == 'workflow_dispatch' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: balik-sefasi-diagnostics-${{ github.run_number }}
+          path: diagnostics/
+          if-no-files-found: ignore
+          retention-days: 2
