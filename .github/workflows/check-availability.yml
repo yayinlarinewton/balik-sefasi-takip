@@ -2,6 +2,12 @@ name: Balik Sefasi - Iptal Takibi
 
 on:
   workflow_dispatch:
+    inputs:
+      test_telegram:
+        description: 'Send only a test Telegram message (do not check reservations)'
+        required: false
+        type: boolean
+        default: false
   schedule:
     # Every 5 min, offset from the start of the hour to reduce GitHub queue contention.
     - cron: '2-57/5 * * * *'
@@ -25,7 +31,30 @@ jobs:
           cache: pip
       - run: pip install -r requirements.txt
       - run: python -m playwright install chromium --with-deps
+      - name: Send a one-time Telegram test message
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.test_telegram }}
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          python - <<'PY'
+          import os, requests
+          token = os.getenv("TELEGRAM_BOT_TOKEN")
+          chat = os.getenv("TELEGRAM_CHAT_ID")
+          if not token or not chat:
+              raise SystemExit("Telegram settings missing: add TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in repository Secrets.")
+          message = "✅ Balık Sefası iptal takip sistemi test bildirimi. Telegram bağlantısı çalışıyor. Henüz yeni müsait sefer tespit edilmedi."
+          r = requests.post(
+              f"https://api.telegram.org/bot{token}/sendMessage",
+              data={"chat_id": chat, "text": message, "disable_web_page_preview": True},
+              timeout=20,
+          )
+          if not r.ok:
+              raise SystemExit(f"Telegram test failed (HTTP {r.status_code}). Check bot token, chat ID, and start the bot with /start.")
+          print("Telegram test message successfully delivered.")
+          PY
       - name: Check selected tours and notify via Telegram
+        if: ${{ github.event_name != 'workflow_dispatch' || !inputs.test_telegram }}
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
