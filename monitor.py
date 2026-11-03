@@ -117,37 +117,53 @@ def click_visual_card(page, label, *, boat=False):
 
 
 def select_equipment_free_tour(page):
-    """Choose only the named equipment-free card and verify the step advances.
+    """Wait for AJAX-loaded prices before choosing the equipment-free tour.
 
-    On step two the site renders price cards, not ordinary HTML buttons.
-    Click the heading or its clickable parent rather than relying on button roles.
+    An earlier test captured the loading spinner and therefore did not see any
+    tour card. No alternative tour may be chosen if loading fails.
     """
-    before = page.url
+    try:
+        page.wait_for_function(
+            """() => {
+                const t = (document.body?.innerText || '')
+                    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+                    .replace(/ı/g, 'i').toLowerCase();
+                return t.includes('ekipmansiz') && t.includes('tur');
+            }""", timeout=18000
+        )
+    except PWTimeout:
+        return False
+
     variants = [
-        page.get_by_text("EKİPMANSIZ TUR", exact=True),
         page.get_by_text("Ekipmansız Tur", exact=True),
         page.get_by_text(re.compile(r"ek[İiı]pmans[ıi]z\s+tur", re.I)),
+        page.get_by_text(re.compile(r"ekipmansız", re.I)),
     ]
     for loc in variants:
-        for i in range(min(loc.count(), 10)):
+        for i in range(min(loc.count(), 12)):
             el = loc.nth(i)
             try:
                 if not el.is_visible():
                     continue
                 for target in (el, el.locator("xpath=..")):
                     try:
-                        target.scroll_into_view_if_needed(timeout=2000)
-                        target.click(timeout=3500, force=True)
-                        quiet_wait(page, 850)
-                        if page.url != before and "step-two" not in page.url:
+                        target.scroll_into_view_if_needed(timeout=2500)
+                        target.click(timeout=4500)
+                        # The price card can start an asynchronous navigation.
+                        try:
+                            page.wait_for_url("**/step-three**", timeout=6000)
                             return True
+                        except PWTimeout:
+                            if "step-three" in page.url:
+                                return True
                     except Exception:
                         continue
             except Exception:
                 continue
 
-    # Never select a different tour to force navigation.
+    # Do not use a different tour or claim success if step-three was not reached.
     return False
+
 
 
 def click_one_of(page, choices):
@@ -263,7 +279,15 @@ def inspect_one(browser, boat, date, index):
     try:
         page.goto(CFG["url"], wait_until="domcontentloaded", timeout=30000)
         quiet_wait(page, 1100)
-        if not click_visual_card(page, boat, boat=True):
+        # Boat cards are loaded asynchronously too: retry rather than missing
+        # a legitimate boat during a transient loading state.
+        boat_selected = False
+        for attempt in range(3):
+            if click_visual_card(page, boat, boat=True):
+                boat_selected = True
+                break
+            page.wait_for_timeout(1250)
+        if not boat_selected:
             save_diag(page, prefix, f"Boat selection not found: {boat}")
             return "UNKNOWN", "Boat selection not found"
         # Let the site move automatically, otherwise continue at most one step.
