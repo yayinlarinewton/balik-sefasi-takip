@@ -128,7 +128,7 @@ def select_equipment_free_tour(page):
                 const t = (document.body?.innerText || '')
                     .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
                     .replace(/ı/g, 'i').toLowerCase();
-                return t.includes('ekipmansiz') && t.includes('tur') && t.includes('devam et');
+                return t.includes('ekipmansiz') && t.includes('tur');
             }""", timeout=18000
         )
     except PWTimeout:
@@ -145,7 +145,7 @@ def select_equipment_free_tour(page):
         try:
             if not el.is_visible():
                 continue
-            el.click(timeout=5000)
+            el.locator("xpath=..").click(timeout=5000)
             clicked = True
             break
         except Exception:
