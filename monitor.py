@@ -62,6 +62,59 @@ def click_exact_or_partial(page, label, *, exact=True):
     return False
 
 
+def click_visual_card(page, label, *, boat=False):
+    """Click a unique visible card label, allowing nested non-button cards.
+
+    The site renders selections as clickable card containers. Avoid the
+    masthead brand text and never choose between duplicate visible matches.
+    """
+    synonyms = {
+        "Balık Sefası": ["Balık Sefası"],
+        "Deniz Anası": ["Deniz Anası"],
+        "Aslan": ["Aslan"],
+        "E. Terzioğlu": ["E.Terzioğlu", "E. Terzioğlu"],
+        "Armada Grande": ["Armada Grande"],
+    }
+    choices = synonyms.get(label, [label]) if boat else [label]
+    target_folds = {re.sub(r"[\\s.]", "", fold(c)) for c in choices}
+    candidates = []
+    for selector in ("h1,h2,h3,h4,h5,h6,strong,b,span,p", "div"):
+        nodes = page.locator(selector)
+        for i in range(min(nodes.count(), 450)):
+            node = nodes.nth(i)
+            try:
+                if not node.is_visible():
+                    continue
+                content = node.inner_text(timeout=350).strip()
+                if not content or len(content) > 100:
+                    continue
+                cleaned = re.sub(r"[\\s.]", "", fold(content))
+                if boat:
+                    if cleaned not in target_folds:
+                        continue
+                elif not ("ekipmansiztur" in cleaned):
+                    continue
+                rect = node.bounding_box(timeout=350)
+                if not rect or rect["y"] < 155:
+                    continue  # Header navigation can repeat the company name.
+                candidates.append((rect["y"], len(content), node))
+            except Exception:
+                continue
+        if candidates:
+            break
+    # A label may be repeated in different nested card elements. Pick the
+    # smallest visible text leaf in the card, not its outer price/details area.
+    candidates.sort(key=lambda x: (x[1], x[0]))
+    if not candidates:
+        return False
+    try:
+        candidates[0][2].click(timeout=6000)
+        quiet_wait(page, 900)
+        return True
+    except Exception:
+        return False
+
+
 def click_one_of(page, choices):
     for s in choices:
         if click_exact_or_partial(page, s):
@@ -175,13 +228,13 @@ def inspect_one(browser, boat, date, index):
     try:
         page.goto(CFG["url"], wait_until="domcontentloaded", timeout=30000)
         quiet_wait(page, 1100)
-        if not click_exact_or_partial(page, boat):
+        if not click_visual_card(page, boat, boat=True):
             save_diag(page, prefix, f"Boat selection not found: {boat}")
             return "UNKNOWN", "Boat selection not found"
         # Let the site move automatically, otherwise continue at most one step.
         if not page.get_by_text(re.compile("ekipmansız|ekipmansiz", re.I)).count():
             next_step(page)
-        if not click_one_of(page, ["Ekipmansız Tur", "Ekipmansız", "Ekipmansız Balık Avı"]):
+        if not click_visual_card(page, "Ekipmansız Tur"):
             save_diag(page, prefix, "Equipment-free tour selection not found")
             return "UNKNOWN", "Tour selection not found"
         if not page.locator('input[type="date"]').count():
