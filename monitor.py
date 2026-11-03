@@ -117,10 +117,10 @@ def click_visual_card(page, label, *, boat=False):
 
 
 def select_equipment_free_tour(page):
-    """Wait for AJAX-loaded prices before choosing the equipment-free tour.
+    """Select only the equipment-free fare and click the separate Continue button.
 
-    An earlier test captured the loading spinner and therefore did not see any
-    tour card. No alternative tour may be chosen if loading fails.
+    The booking UI uses a two-part flow: select a fare card, then press
+    'DEVAM ET'. Clicking the card alone does not navigate to step-three.
     """
     try:
         page.wait_for_function(
@@ -128,41 +128,42 @@ def select_equipment_free_tour(page):
                 const t = (document.body?.innerText || '')
                     .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
                     .replace(/ı/g, 'i').toLowerCase();
-                return t.includes('ekipmansiz') && t.includes('tur');
+                return t.includes('ekipmansiz') && t.includes('tur') && t.includes('devam et');
             }""", timeout=18000
         )
     except PWTimeout:
         return False
 
-    variants = [
-        page.get_by_text("Ekipmansız Tur", exact=True),
-        page.get_by_text(re.compile(r"ek[İiı]pmans[ıi]z\s+tur", re.I)),
-        page.get_by_text(re.compile(r"ekipmansız", re.I)),
-    ]
-    for loc in variants:
-        for i in range(min(loc.count(), 12)):
-            el = loc.nth(i)
-            try:
-                if not el.is_visible():
-                    continue
-                for target in (el, el.locator("xpath=..")):
-                    try:
-                        target.scroll_into_view_if_needed(timeout=2500)
-                        target.click(timeout=4500)
-                        # The price card can start an asynchronous navigation.
-                        try:
-                            page.wait_for_url("**/step-three**", timeout=6000)
-                            return True
-                        except PWTimeout:
-                            if "step-three" in page.url:
-                                return True
-                    except Exception:
-                        continue
-            except Exception:
+    # The equipment-free option is normally preselected. Still click its
+    # exact text to avoid accidentally changing the selected fare.
+    fare_text = page.get_by_text("EKİPMANSIZ TUR", exact=True)
+    if fare_text.count() == 0:
+        fare_text = page.get_by_text(re.compile(r"ek[İiı]pmans[ıi]z\s+tur", re.I))
+    clicked = False
+    for i in range(min(fare_text.count(), 10)):
+        el = fare_text.nth(i)
+        try:
+            if not el.is_visible():
                 continue
+            el.click(timeout=5000)
+            clicked = True
+            break
+        except Exception:
+            continue
+    if not clicked:
+        return False
 
-    # Do not use a different tour or claim success if step-three was not reached.
-    return False
+    # A separate Continue button must be clicked before date selection.
+    continue_button = page.get_by_role("button", name=re.compile(r"DEVAM\s+ET", re.I))
+    if continue_button.count() == 0:
+        continue_button = page.get_by_text(re.compile(r"^DEVAM\s+ET", re.I))
+    try:
+        continue_button.first.click(timeout=6000)
+        page.wait_for_url("**/step-three**", timeout=10000)
+        quiet_wait(page, 650)
+        return True
+    except Exception:
+        return "step-three" in page.url
 
 
 
