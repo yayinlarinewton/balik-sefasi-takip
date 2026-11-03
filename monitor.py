@@ -115,6 +115,41 @@ def click_visual_card(page, label, *, boat=False):
         return False
 
 
+
+def select_equipment_free_tour(page):
+    """Choose only the named equipment-free card and verify the step advances.
+
+    On step two the site renders price cards, not ordinary HTML buttons.
+    Click the heading or its clickable parent rather than relying on button roles.
+    """
+    before = page.url
+    variants = [
+        page.get_by_text("EKİPMANSIZ TUR", exact=True),
+        page.get_by_text("Ekipmansız Tur", exact=True),
+        page.get_by_text(re.compile(r"ek[İiı]pmans[ıi]z\s+tur", re.I)),
+    ]
+    for loc in variants:
+        for i in range(min(loc.count(), 10)):
+            el = loc.nth(i)
+            try:
+                if not el.is_visible():
+                    continue
+                for target in (el, el.locator("xpath=..")):
+                    try:
+                        target.scroll_into_view_if_needed(timeout=2000)
+                        target.click(timeout=3500, force=True)
+                        quiet_wait(page, 850)
+                        if page.url != before and "step-two" not in page.url:
+                            return True
+                    except Exception:
+                        continue
+            except Exception:
+                continue
+
+    # Never select a different tour to force navigation.
+    return False
+
+
 def click_one_of(page, choices):
     for s in choices:
         if click_exact_or_partial(page, s):
@@ -234,7 +269,7 @@ def inspect_one(browser, boat, date, index):
         # Let the site move automatically, otherwise continue at most one step.
         if not page.get_by_text(re.compile("ekipmansız|ekipmansiz", re.I)).count():
             next_step(page)
-        if not click_visual_card(page, "Ekipmansız Tur"):
+        if not select_equipment_free_tour(page):
             save_diag(page, prefix, "Equipment-free tour selection not found")
             return "UNKNOWN", "Tour selection not found"
         if not page.locator('input[type="date"]').count():
